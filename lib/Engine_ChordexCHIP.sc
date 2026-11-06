@@ -27,7 +27,7 @@ Engine_ChordexCHIP : CroneEngine {
   var atk = 0.005, rel = 0.4, sus = 0.7;
   var duty = 0.25, pwm = 0, noise = 0, sweep = 0, swt = 0.12, vib = 0.2, fat = 0;
   var tab = 0, btab = 1, quant = 1, fm = 0, mtab = 20, ratio = 1;
-  var carp = 0, bass = 0.7, strum = 0;
+  var carp = 0, bass = 0.7, strumVel = 0.8;
 
   alloc {
     var tables, mkChip, mkFm, d32 = "0123456789ABCDEFGHIJKLMNOPQRSTUV";
@@ -249,12 +249,7 @@ Engine_ChordexCHIP : CroneEngine {
       var freqs = [msg[1], msg[2], msg[3], msg[4]].select({ |f| f > 0 });
       var subf = msg[5], vel = msg[6], nv;
 
-      if (releasingGroup.notNil) { releasingGroup.free };
-      if (noteGroup.notNil) {
-        noteGroup.set(\gate, 0);
-        releasingGroup = noteGroup;
-      };
-      noteGroup = Group.head(context.xg);
+      this.newGroup;
       if (freqs.size == 0) { freqs = [subf * 4] };
 
       if (carp > 0 and: { freqs.size > 1 }) {
@@ -263,25 +258,39 @@ Engine_ChordexCHIP : CroneEngine {
           \vel, vel, \amp, 0.3 * this.ampFix, \pan, 0
         ], noteGroup);
       } {
-        // strum: cada voz entra strum segundos después de la anterior;
-        // positivo = de grave a agudo, negativo = de agudo a grave
-        var g = noteGroup, args;
         nv = freqs.size;
         freqs.do({ |f, i|
-          var wait = strum.abs * (if (strum < 0) { nv - 1 - i } { i });
-          args = this.voiceArgs ++ [
+          Synth.new(this.def(\voice), this.voiceArgs ++ [
             \f1, f, \nf, 1, \vel, vel, \amp, 0.2 * this.ampFix * ((4 / nv) ** 0.5),
             \pan, if (nv == 1) { 0 } { ((i - 1.5) * 0.35).clip(-0.9, 0.9) }
-          ];
-          if (wait <= 0) { Synth.new(this.def(\voice), args, g) } {
-            SystemClock.sched(wait, {
-              if (noteGroup === g) { Synth.new(this.def(\voice), args, g) };
-              nil
-            });
-          };
+          ], noteGroup);
         });
       };
       if (bass > 0) { Synth.new(\chip_bass, this.bassArgs(subf, 0.24 * bass), noteGroup) };
+    });
+
+    // strum: grupo nuevo con el bajo; las notas llegan con strumNote
+    this.addCommand("strumOn", "ff", { |msg|
+      this.newGroup;
+      strumVel = msg[2];
+      if (bass > 0) { Synth.new(\chip_bass, this.bassArgs(msg[1], 0.24 * bass), noteGroup) };
+    });
+
+    // frecuencia, espera (s), cantidad total de notas, pan
+    this.addCommand("strumNote", "ffff", { |msg|
+      var g = noteGroup, nv = msg[3].max(1);
+      var args = this.voiceArgs ++ [
+        \f1, msg[1], \nf, 1, \vel, strumVel, \pan, msg[4],
+        \amp, 0.2 * this.ampFix * ((4 / nv.max(4)) ** 0.5)
+      ];
+      if (g.notNil) {
+        if (msg[2] <= 0) { Synth.new(this.def(\voice), args, g) } {
+          SystemClock.sched(msg[2], {
+            if (noteGroup === g) { Synth.new(this.def(\voice), args, g) };
+            nil
+          });
+        };
+      };
     });
 
     this.addCommand("noteOff", "", { |msg|
@@ -357,7 +366,6 @@ Engine_ChordexCHIP : CroneEngine {
     this.addCommand("fat", "f", { |msg| fat = msg[1]; this.setLive([\fat, fat]) });
     this.addCommand("carp", "f", { |msg| carp = msg[1] });
     this.addCommand("bass", "f", { |msg| bass = msg[1] });
-    this.addCommand("strum", "f", { |msg| strum = msg[1].clip(-0.5, 0.5) });
 
     this.addCommand("cutoff", "f", { |msg| fxSynth.set(\cutoff, msg[1]) });
     this.addCommand("reso", "f", { |msg| fxSynth.set(\reso, msg[1]) });
@@ -368,6 +376,15 @@ Engine_ChordexCHIP : CroneEngine {
     this.addCommand("space", "f", { |msg| fxSynth.set(\space, msg[1]) });
     this.addCommand("gain", "f", { |msg| fxSynth.set(\gain, msg[1]) });
     this.addCommand("crackle", "f", { |msg| fxSynth.set(\crackle, msg[1]) });
+  }
+
+  newGroup {
+    if (releasingGroup.notNil) { releasingGroup.free };
+    if (noteGroup.notNil) {
+      noteGroup.set(\gate, 0);
+      releasingGroup = noteGroup;
+    };
+    noteGroup = Group.head(context.xg);
   }
 
   def { |kind| ^((if (fm == 1) { "fm_" } { "chip_" }) ++ kind).asSymbol }

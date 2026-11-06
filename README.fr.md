@@ -92,7 +92,7 @@ moteur `ChordexCHIP`, puis chargez **chordexchip** depuis SELECT.
 | K2 + E1 | gate de l'arpège (max = legato) |
 | K2 + E2 | motif de l'arpège |
 | K2 + E3 | vitesse de l'arpège |
-| K2 + K3 + E3 | strum : + du grave à l'aigu, − de l'aigu au grave (ms entre voix) |
+| K2 + K3 | ouvre le panneau STRUM (reste ouvert ; se ferme 3 s après le dernier mouvement ou avec K2 + K3) : E3 = notes, +1…+12 vers le haut depuis l'accord, −1…−12 vers le bas ; E2 = temps entre les notes (ms, ou divisions avec une horloge MIDI) |
 | K1 maintenu | hold on/off (petit point en haut) |
 
 **Faders :** attaque, decay, duty, PWM, sweep, vibrato, bruit, fatness,

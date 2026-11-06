@@ -92,7 +92,7 @@ Danach **norns neu starten** (SYSTEM > RESTART), damit die neue Engine
 | K2 + E1 | Arpeggio-Gate (Maximum = Legato) |
 | K2 + E2 | Arpeggio-Pattern |
 | K2 + E3 | Arpeggio-Tempo |
-| K2 + K3 + E3 | Strum: + von tief nach hoch, − von hoch nach tief (ms zwischen Stimmen) |
+| K2 + K3 | öffnet das STRUM-Feld (bleibt offen; schließt 3 s nach der letzten Drehung oder mit K2 + K3): E3 = Noten, +1…+12 aufwärts vom Akkord, −1…−12 abwärts; E2 = Zeit zwischen den Noten (ms, oder Notenwerte bei MIDI-Clock) |
 | K1 halten | Hold an/aus (kleiner Punkt oben) |
 
 **Fader:** Attack, Decay, Duty, PWM, Sweep, Vibrato, Rauschen, Fatness,

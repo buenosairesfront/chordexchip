@@ -68,6 +68,8 @@ local arp_rate_mult = {4, 2, 1, 0.5}
 local arp_rate_names = {"x1/4", "x1/2", "x1", "x2"}
 local carp_names = {"off", "12Hz", "15Hz", "20Hz", "25Hz", "30Hz", "50Hz", "60Hz"}
 local carp_hz = {0, 12, 15, 20, 25, 30, 50, 60}
+local strum_div_names = {"1/64", "1/32", "1/16T", "1/16", "1/8T", "1/8", "1/4"}
+local strum_div_beats = {1 / 16, 1 / 8, 1 / 6, 1 / 4, 1 / 3, 1 / 2, 1}
 
 -- ============================================================
 -- tablas de onda (las mismas cadenas que el engine; tools/tablas.py)
@@ -257,7 +259,10 @@ local chord_flash = 0
 local bank_flash = 0
 local carp_flash = 0
 local hold_flash = 0
-local strum_flash = 0
+local strum_ui = false    -- panel de strum abierto (K2+K3)
+local strum_t = 0         -- último movimiento en el panel
+local STRUM_CLOSE = 3     -- segundos sin tocar E2/E3 para cerrarlo
+local strum_gen = 0
 local last_t = nil
 
 -- voces "simuladas" para que la pantalla respire igual que el sonido
@@ -352,8 +357,70 @@ local function chord_tone_notes(note)
   return t
 end
 
+-- forward: definidas más abajo (dependen del reloj MIDI)
+local strum_step
+
+-- strum: n notas del acorde repetido hacia arriba por octavas;
+-- positivo = de grave a agudo, negativo = de agudo a grave
+local function strum_notes(t, n)
+  -- positivo: desde la nota más grave del acorde hacia arriba, por octavas
+  -- (hasta C7); negativo: desde la más aguda hacia abajo (hasta C1).
+  -- Sin repetir notas; si faltan, vuelve a empezar.
+  local pool = {}
+  if n > 0 then
+    local last = -1
+    for oct = 0, 8 do
+      for _, m in ipairs(t) do
+        m = m + 12 * oct
+        if m > last and (m <= 96 or #pool == 0) then pool[#pool + 1] = m; last = m end
+      end
+    end
+  else
+    local last = 999
+    for oct = 0, 8 do
+      for i = #t, 1, -1 do
+        local m = t[i] - 12 * oct
+        if m < last and (m >= 24 or #pool == 0) then pool[#pool + 1] = m; last = m end
+      end
+    end
+  end
+  local out, k = {}, #pool
+  for i = 1, math.abs(n) do out[i] = pool[(i - 1) % k + 1] end
+  return out
+end
+
+local function sound_strum(note, t)
+  local sn = strum_notes(t, pv("strum"))
+  local n = #sn
+  local step = strum_step()
+  voiced_sig = keys_sig()
+  engine.strumOn(note_to_hz(note - 24), current_vel)
+  for i, m in ipairs(sn) do
+    local pan = n > 1 and ((i - 1) / (n - 1) * 2 - 1) * 0.7 or 0
+    if pv("strum") < 0 then pan = -pan end
+    engine.strumNote(note_to_hz(m), (i - 1) * step, n, pan)
+  end
+  VS.chord = {t0 = util.time(), note = sn[1], vel = current_vel}
+  -- tracker: las notas van cayendo a su tiempo, rotando por las 4 columnas
+  for col = 1, 4 do TR.live[col] = nil end
+  TR.fx = nil
+  strum_gen = strum_gen + 1
+  local g = strum_gen
+  clock.run(function()
+    for i, m in ipairs(sn) do
+      if strum_gen ~= g or current_note == nil then return end
+      local col = (i - 1) % 4 + 1
+      TR.live[col] = true
+      tr_note(col, m)
+      if i < n then clock.sleep(step) end
+    end
+  end)
+  flash = 1
+end
+
 local function sound_chord(note)
   local t = chord_tone_notes(note)
+  if pv("strum") ~= 0 then return sound_strum(note, t) end
   local f = {}
   for i = 1, 4 do f[i] = t[i] and note_to_hz(t[i]) or 0 end
   voiced_sig = keys_sig()
@@ -424,6 +491,16 @@ end
 local function beat_seconds()
   if ext_clock_on() and tick_sec then return tick_sec * 24 end
   return clock.get_beat_sec()
+end
+
+strum_step = function()
+  if ext_clock_on() and tick_sec then return tick_sec * 24 * strum_div_beats[pv("strum_div")] end
+  return pv("strum_ms") / 1000
+end
+
+local function strum_time_text()
+  if ext_clock_on() and tick_sec then return strum_div_names[pv("strum_div")] end
+  return pv("strum_ms") .. "ms"
 end
 
 local function arp_note_dur(step_sec)
@@ -715,8 +792,9 @@ local function add_params()
   params:add_control("arp_gate", "gate arp (1=legato)", controlspec.new(0, 1, "lin", 0, 0.6, ""))
   params:add_option("carp", "arpegio de chip", carp_names, 1)
   params:set_action("carp", function(v) engine.carp(carp_hz[v]) end)
-  params:add_number("strum", "strum (ms, - = de agudo a grave)", -150, 150, 0)
-  params:set_action("strum", function(v) engine.strum(v / 1000) end)
+  params:add_number("strum", "strum notas (+ sube, - baja)", -12, 12, 0)
+  params:add_number("strum_ms", "strum tiempo (ms)", 5, 300, 40)
+  params:add_option("strum_div", "strum tiempo con reloj MIDI", strum_div_names, 2)
 
   params:add_separator("chordex_chip_voz", "VOZ")
   params:add_control("atk", "ataque", controlspec.new(0.001, 2, "lin", 0, 0.005, "s"))
@@ -811,9 +889,31 @@ local function nudge(p, d)
   params:set(p.id, util.clamp(pv(p.id) + d * p.step, p.min, p.max))
 end
 
+local function strum_toggle()
+  k2_turned = true; k3_turned = true
+  strum_ui = not strum_ui
+  strum_t = util.time()
+end
+
 function enc(n, d)
   if splash_start then return end
   local dir = d > 0 and 1 or -1
+  -- panel de strum abierto: E3 = notas (±12), E2 = tiempo
+  if strum_ui and (n == 2 or n == 3) then
+    strum_t = util.time()
+    if k2_held then k2_turned = true end
+    if k3_held then k3_turned = true end
+    if n == 3 then
+      params:set("strum", util.clamp(pv("strum") + dir, -12, 12))
+    elseif ext_clock_on() and tick_sec then
+      params:set("strum_div", util.clamp(pv("strum_div") + dir, 1, #strum_div_names))
+    else
+      local v = pv("strum_ms")
+      local st = v < 30 and 1 or (v < 100 and 5 or 10)
+      params:set("strum_ms", util.clamp(v + dir * st, 5, 300))
+    end
+    return
+  end
   if n == 1 then
     if k2_held then
       params:set("arp_gate", util.clamp(params:get("arp_gate") + d * 0.02, 0, 1))
@@ -842,12 +942,7 @@ function enc(n, d)
       bump(P[focus_index].id)
     end
   elseif n == 3 then
-    if k2_held and k3_held then
-      -- K2+K3 juntos: strum (positivo = de grave a agudo, negativo = al revés)
-      k2_turned = true; k3_turned = true
-      params:set("strum", util.clamp(pv("strum") + dir * 5, -150, 150))
-      strum_flash = PULSE * 2
-    elseif k2_held then
+    if k2_held then
       params:set("arp_rate", util.clamp(pv("arp_rate") + dir, 1, #arp_rate_names))
       k2_turned = true
       bump("arp")
@@ -872,7 +967,7 @@ function key(n, z)
   elseif n == 2 then
     if z == 1 then
       k2_held = true; k2_turned = false
-      if k3_held then k2_turned = true; k3_turned = true; strum_flash = PULSE * 2 end
+      if k3_held then strum_toggle() end
     else
       if splash_start then skip_splash()
       elseif k2_held and not k2_turned then
@@ -895,7 +990,7 @@ function key(n, z)
     if z == 1 then
       -- mantener K3 sin girar ningún encoder alterna el modo acorde
       k3_turned = false
-      if k2_held then k2_turned = true; k3_turned = true; strum_flash = PULSE * 2 end
+      if k2_held then strum_toggle() end
       local press = util.time()
       k3_press = press
       clock.run(function()
@@ -947,6 +1042,9 @@ function G.flush()
   end
 end
 end
+
+local lane = include("lib/chip_lane")
+lane.init(G)
 
 -- envolvente simulada (la misma ADSR que el engine) para la onda en pantalla
 local function env_at(vs, t)
@@ -1075,89 +1173,14 @@ end
 -- up, down, up-down, up x2, down x2, random, arpa (altura 0..5 por paso)
 local ARP_ICON = {"024024", "420420", "024202", "002244", "442200", "305124", "012345"}
 
--- ---- mascota de cada consola: un sprite ínfimo (5-7 px) animado ----
--- cada cuadro: filas de arriba a abajo, "#" = píxel prendido
-local SPR = {
-  -- NES: un plomero que corre y salta
-  NES = {{".##..", "####.", ".##..", "####.", ".##..", "#..#."},
-         {".##..", "####.", ".##..", "####.", ".##..", ".##.."}},
-  -- GB: una pieza de 4 bloques que gira
-  GB = {{"######", "######", "..##..", "..##.."},
-        {"##....", "##....", "####..", "####..", "##....", "##...."},
-        {"..##..", "..##..", "######", "######"},
-        {"..##", "..##", "####", "####", "..##", "..##"}},
-  -- C64: un invasor que mueve las patas
-  C64 = {{".###.", "#.#.#", "#####", ".#.#.", "#...#"},
-         {".###.", "#.#.#", "#####", "#.#.#", ".#.#."}},
-  -- ATARI: un comecocos que abre y cierra la boca, con su pastilla
-  ATARI = {{".###...", "###....", "##....#", "###....", ".###..."},
-           {".###...", "#####..", "#####.#", "#####..", ".###..."}},
-  -- MSX: nave espacial con su disparo
-  MSX = {{"..#..", "..#..", ".###.", "#####", "#.#.#"},
-         {"..#..", "..#..", ".###.", "#####", ".#.#."}},
-  -- PCE: nave de shooter horizontal con la tobera encendida
-  PCE = {{"##....", ".####.", "######", ".####.", "##...."},
-         {"##....", "#####.", "######", "#####.", "##...."}},
-  -- OPL: el prompt de DOS titilando
-  OPL = {{"#.....", ".#....", "..#...", ".#....", "#.###."},
-         {"#.....", ".#....", "..#...", ".#....", "#....."}},
-}
-local SPR_FPS = {NES = 5, GB = 3, C64 = 3, ATARI = 6, MSX = 8, PCE = 10, OPL = 2}
-
-local function draw_frame(rows, x, y, lv)
-  for yy = 1, #rows do
-    local r = rows[yy]
-    for xx = 1, #r do
-      if r:byte(xx) == 35 then G.px(lv, x + xx - 1, y + yy - 1) end
-    end
-  end
-end
-
--- devuelve el ancho usado
-local function draw_mascot(name, x, t)
-  if name == "AMIGA" then
-    -- la pelota a cuadros que rebota y gira
-    local hop = math.floor(math.abs(math.sin(t * 5)) * 2 + 0.5)
-    local ph = math.floor(t * 8) % 2
-    local mask = {".###.", "#####", "#####", "#####", ".###."}
-    for yy = 1, 5 do
-      for xx = 1, 5 do
-        if mask[yy]:byte(xx) == 35 then
-          local on = ((xx + yy + ph) % 2 == 0)
-          G.px(on and 12 or 4, x + xx - 1, 4 - hop + yy - 1)
-        end
-      end
-    end
-    return 5
-  end
-  local frames = SPR[name]
-  if not frames then return 0 end
-  local f = math.floor(t * (SPR_FPS[name] or 4)) % #frames + 1
-  local rows = frames[f]
-  local y = 7 - #rows                -- apoyado en la línea del texto
-  if name == "NES" and f == 2 then y = y - 1 end   -- el salto
-  if name == "MSX" then
-    -- disparo que sube desde la nave
-    local sy = 1 - (math.floor(t * 8) % 2)
-    G.px(15, x + 2, sy)
-  end
-  draw_frame(rows, x, y, 12)
-  local w = 0
-  for _, r in ipairs(frames[1]) do w = math.max(w, #r) end
-  return w
-end
-
 local function draw_header(t)
   screen.font_face(1)
   screen.font_size(8)
   local b, p = cur_bank(), cur_preset()
   screen.level(10)
   screen.move(0, 7)
-  local label = b.name .. " " .. pv("preset")
-  screen.text(label)
-  local sx = screen.text_extents(label) + 2
-  local sw = draw_mascot(b.name, sx, t)
-  local ax = math.max(36, sx + sw + 2)
+  screen.text(b.name .. " " .. pv("preset"))
+  local ax = 36
   if arp_on then
     screen.level(pulse.arp and pulse.arp > 0 and 15 or 8)
     screen.move(ax, 7)
@@ -1241,15 +1264,50 @@ local function boxed_text(txt, size, a)
   screen.text(txt)
 end
 
-local function strum_text()
+-- panel de strum: notas (E3) y tiempo (E2) + una escalera con las notas;
+-- el punto que brilla recorre la escalera al tiempo del strum
+local function draw_strum_panel()
+  local x0, y0, w, h = 22, 17, 84, 30
+  screen.level(0)
+  screen.rect(x0, y0, w, h)
+  screen.fill()
+  screen.font_face(1)
+  screen.font_size(8)
+  screen.level(15)
+  screen.move(x0 + 4, y0 + 9)
+  screen.text("STRUM")
   local v = pv("strum")
-  if v == 0 then return "STRUM OFF" end
-  return string.format("STRUM %+dms", v)
+  screen.move(x0 + 4, y0 + 18)
+  screen.level(v == 0 and 6 or 15)
+  screen.text(v == 0 and "OFF" or string.format("%+d", v))
+  screen.level(6)
+  screen.move(x0 + 4, y0 + 27)
+  screen.text("E2")
+  screen.level(12)
+  screen.move(x0 + 16, y0 + 27)
+  screen.text(strum_time_text())
+  screen.level(6)
+  screen.move(x0 + 24, y0 + 18)
+  screen.text("E3")
+  -- escalera
+  local n = math.abs(v)
+  if n > 0 then
+    local sx = x0 + w - 4 - (n - 1) * 3 - 2
+    local step = math.max(0.03, strum_step())
+    local lit = math.floor(util.time() / step) % (n + 3) + 1
+    for i = 1, n do
+      local hgt = n > 1 and math.floor((i - 1) * 16 / (n - 1) + 0.5) or 8
+      if v < 0 then hgt = 16 - hgt end
+      local idx = i
+      G.rect(idx == lit and 15 or 8, sx + (i - 1) * 3, y0 + 23 - hgt, 2, 2)
+    end
+  end
+  G.flush()
 end
 
 local function draw_overlays()
-  if (k2_held and k3_held) or strum_flash > 0 then
-    boxed_text(strum_text(), 8, (k2_held and k3_held) and 1 or math.min(1, strum_flash / PULSE))
+  if strum_ui then
+    draw_strum_panel()
   elseif bank_flash > 0 then
     boxed_text(cur_bank().name, 16, math.min(1, bank_flash / PULSE))
   elseif carp_flash > 0 then
@@ -1316,7 +1374,7 @@ local function tick(dt)
   carp_flash = math.max(0, carp_flash - 1)
   chord_flash = math.max(0, chord_flash - 1)
   hold_flash = math.max(0, hold_flash - 1)
-  strum_flash = math.max(0, strum_flash - 1)
+  if strum_ui and util.time() - strum_t > STRUM_CLOSE then strum_ui = false end
   flash = math.max(0, flash - dt * 3)
 end
 
@@ -1352,6 +1410,7 @@ function redraw()
   draw_tracker(now)
   draw_scope(now)
   draw_faders()
+  lane.draw(cur_bank().name, now)
   G.flush()
   draw_overlays()
   screen.update()
