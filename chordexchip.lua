@@ -350,13 +350,16 @@ end
 -- sonido
 -- ============================================================
 
+local MAX_KEYS = 8
+
 local function chord_tone_notes(note)
   local t = {}
   for _, iv in ipairs(four_tone_intervals(chord_name())) do t[#t + 1] = shift(note + iv) end
-  -- modo simple con varias teclas: suenan todas juntas (hasta 4, las más agudas)
+  -- modo simple con varias teclas: suenan todas juntas (hasta MAX_KEYS,
+  -- las más agudas)
   if pv("chord_on") == 1 and #arp_keys > 1 then
     t = {}
-    for i = math.max(1, #arp_keys - 3), #arp_keys do t[#t + 1] = shift(arp_keys[i]) end
+    for i = math.max(1, #arp_keys - MAX_KEYS + 1), #arp_keys do t[#t + 1] = shift(arp_keys[i]) end
   end
   return t
 end
@@ -398,6 +401,7 @@ local function sound_strum(note, t)
     for i, m in ipairs(sn) do
       if strum_gen ~= g or current_note == nil then return end
       local col = pv("strum") > 0 and i or (n - i + 1)   -- cada nota en su columna
+      col = (col - 1) % 4 + 1
       TR.live[col] = true
       tr_note(col, m)
       if i < n then clock.sleep(step) end
@@ -409,6 +413,24 @@ end
 local function sound_chord(note)
   local t = chord_tone_notes(note)
   if pv("strum") ~= 0 then return sound_strum(note, t) end
+  if #t > 4 and pv("carp") == 1 then
+    -- más de 4 teclas: cada una con su voz (noteOn lleva solo 4)
+    local n = #t
+    voiced_sig = keys_sig()
+    engine.strumOn(note_to_hz(note - 24), current_vel)
+    for i, m in ipairs(t) do
+      engine.strumNote(note_to_hz(m), 0, n, ((i - 1) / (n - 1) * 2 - 1) * 0.6)
+    end
+    VS.chord = {t0 = util.time(), note = t[1], vel = current_vel}
+    TR.fx = nil
+    for col = 1, 4 do
+      local m = t[math.floor((col - 1) * (n - 1) / 3 + 0.5) + 1]
+      TR.live[col] = true
+      tr_note(col, m)
+    end
+    flash = 1
+    return
+  end
   local f = {}
   for i = 1, 4 do f[i] = t[i] and note_to_hz(t[i]) or 0 end
   voiced_sig = keys_sig()
@@ -882,7 +904,7 @@ local function strum_toggle()
 end
 
 function enc(n, d)
-  if splash_start then return end
+  if splash_start or not params.lookup["bank"] then return end
   local dir = d > 0 and 1 or -1
   -- panel de strum abierto: E3 = división del pulso (+ / - = sentido)
   if strum_ui and n == 3 then
@@ -936,6 +958,7 @@ function enc(n, d)
 end
 
 function key(n, z)
+  if not params.lookup["bank"] then return end
   -- K1 llega acá solo si se mantiene (el toque corto abre el menú de norns)
   if n == 1 then
     if z == 1 then
