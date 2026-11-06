@@ -92,6 +92,7 @@ Danach **norns neu starten** (SYSTEM > RESTART), damit die neue Engine
 | K2 + E1 | Arpeggio-Gate (Maximum = Legato) |
 | K2 + E2 | Arpeggio-Pattern |
 | K2 + E3 | Arpeggio-Tempo |
+| K2 + K3 + E3 | Strum: + von tief nach hoch, − von hoch nach tief (ms zwischen Stimmen) |
 | K1 halten | Hold an/aus (kleiner Punkt oben) |
 
 **Fader:** Attack, Decay, Duty, PWM, Sweep, Vibrato, Rauschen, Fatness,

@@ -257,6 +257,7 @@ local chord_flash = 0
 local bank_flash = 0
 local carp_flash = 0
 local hold_flash = 0
+local strum_flash = 0
 local last_t = nil
 
 -- voces "simuladas" para que la pantalla respire igual que el sonido
@@ -714,6 +715,8 @@ local function add_params()
   params:add_control("arp_gate", "gate arp (1=legato)", controlspec.new(0, 1, "lin", 0, 0.6, ""))
   params:add_option("carp", "arpegio de chip", carp_names, 1)
   params:set_action("carp", function(v) engine.carp(carp_hz[v]) end)
+  params:add_number("strum", "strum (ms, - = de agudo a grave)", -150, 150, 0)
+  params:set_action("strum", function(v) engine.strum(v / 1000) end)
 
   params:add_separator("chordex_chip_voz", "VOZ")
   params:add_control("atk", "ataque", controlspec.new(0.001, 2, "lin", 0, 0.005, "s"))
@@ -839,7 +842,12 @@ function enc(n, d)
       bump(P[focus_index].id)
     end
   elseif n == 3 then
-    if k2_held then
+    if k2_held and k3_held then
+      -- K2+K3 juntos: strum (positivo = de grave a agudo, negativo = al revés)
+      k2_turned = true; k3_turned = true
+      params:set("strum", util.clamp(pv("strum") + dir * 5, -150, 150))
+      strum_flash = PULSE * 2
+    elseif k2_held then
       params:set("arp_rate", util.clamp(pv("arp_rate") + dir, 1, #arp_rate_names))
       k2_turned = true
       bump("arp")
@@ -864,6 +872,7 @@ function key(n, z)
   elseif n == 2 then
     if z == 1 then
       k2_held = true; k2_turned = false
+      if k3_held then k2_turned = true; k3_turned = true; strum_flash = PULSE * 2 end
     else
       if splash_start then skip_splash()
       elseif k2_held and not k2_turned then
@@ -886,6 +895,7 @@ function key(n, z)
     if z == 1 then
       -- mantener K3 sin girar ningún encoder alterna el modo acorde
       k3_turned = false
+      if k2_held then k2_turned = true; k3_turned = true; strum_flash = PULSE * 2 end
       local press = util.time()
       k3_press = press
       clock.run(function()
@@ -1065,23 +1075,99 @@ end
 -- up, down, up-down, up x2, down x2, random, arpa (altura 0..5 por paso)
 local ARP_ICON = {"024024", "420420", "024202", "002244", "442200", "305124", "012345"}
 
+-- ---- mascota de cada consola: un sprite ínfimo (5-7 px) animado ----
+-- cada cuadro: filas de arriba a abajo, "#" = píxel prendido
+local SPR = {
+  -- NES: un plomero que corre y salta
+  NES = {{".##..", "####.", ".##..", "####.", ".##..", "#..#."},
+         {".##..", "####.", ".##..", "####.", ".##..", ".##.."}},
+  -- GB: una pieza de 4 bloques que gira
+  GB = {{"######", "######", "..##..", "..##.."},
+        {"##....", "##....", "####..", "####..", "##....", "##...."},
+        {"..##..", "..##..", "######", "######"},
+        {"..##", "..##", "####", "####", "..##", "..##"}},
+  -- C64: un invasor que mueve las patas
+  C64 = {{".###.", "#.#.#", "#####", ".#.#.", "#...#"},
+         {".###.", "#.#.#", "#####", "#.#.#", ".#.#."}},
+  -- ATARI: un comecocos que abre y cierra la boca, con su pastilla
+  ATARI = {{".###...", "###....", "##....#", "###....", ".###..."},
+           {".###...", "#####..", "#####.#", "#####..", ".###..."}},
+  -- MSX: nave espacial con su disparo
+  MSX = {{"..#..", "..#..", ".###.", "#####", "#.#.#"},
+         {"..#..", "..#..", ".###.", "#####", ".#.#."}},
+  -- PCE: nave de shooter horizontal con la tobera encendida
+  PCE = {{"##....", ".####.", "######", ".####.", "##...."},
+         {"##....", "#####.", "######", "#####.", "##...."}},
+  -- OPL: el prompt de DOS titilando
+  OPL = {{"#.....", ".#....", "..#...", ".#....", "#.###."},
+         {"#.....", ".#....", "..#...", ".#....", "#....."}},
+}
+local SPR_FPS = {NES = 5, GB = 3, C64 = 3, ATARI = 6, MSX = 8, PCE = 10, OPL = 2}
+
+local function draw_frame(rows, x, y, lv)
+  for yy = 1, #rows do
+    local r = rows[yy]
+    for xx = 1, #r do
+      if r:byte(xx) == 35 then G.px(lv, x + xx - 1, y + yy - 1) end
+    end
+  end
+end
+
+-- devuelve el ancho usado
+local function draw_mascot(name, x, t)
+  if name == "AMIGA" then
+    -- la pelota a cuadros que rebota y gira
+    local hop = math.floor(math.abs(math.sin(t * 5)) * 2 + 0.5)
+    local ph = math.floor(t * 8) % 2
+    local mask = {".###.", "#####", "#####", "#####", ".###."}
+    for yy = 1, 5 do
+      for xx = 1, 5 do
+        if mask[yy]:byte(xx) == 35 then
+          local on = ((xx + yy + ph) % 2 == 0)
+          G.px(on and 12 or 4, x + xx - 1, 4 - hop + yy - 1)
+        end
+      end
+    end
+    return 5
+  end
+  local frames = SPR[name]
+  if not frames then return 0 end
+  local f = math.floor(t * (SPR_FPS[name] or 4)) % #frames + 1
+  local rows = frames[f]
+  local y = 7 - #rows                -- apoyado en la línea del texto
+  if name == "NES" and f == 2 then y = y - 1 end   -- el salto
+  if name == "MSX" then
+    -- disparo que sube desde la nave
+    local sy = 1 - (math.floor(t * 8) % 2)
+    G.px(15, x + 2, sy)
+  end
+  draw_frame(rows, x, y, 12)
+  local w = 0
+  for _, r in ipairs(frames[1]) do w = math.max(w, #r) end
+  return w
+end
+
 local function draw_header(t)
   screen.font_face(1)
   screen.font_size(8)
   local b, p = cur_bank(), cur_preset()
   screen.level(10)
   screen.move(0, 7)
-  screen.text(b.name .. " " .. pv("preset"))
+  local label = b.name .. " " .. pv("preset")
+  screen.text(label)
+  local sx = screen.text_extents(label) + 2
+  local sw = draw_mascot(b.name, sx, t)
+  local ax = math.max(36, sx + sw + 2)
   if arp_on then
     screen.level(pulse.arp and pulse.arp > 0 and 15 or 8)
-    screen.move(36, 7)
+    screen.move(ax, 7)
     screen.text("ARP")
     -- ícono del patrón: 6 pasos, altura = nota; el paso que suena brilla
     local shape = ARP_ICON[pv("arp_pattern")]
     local lit = (step_i - 2) % 6 + 1
     for k = 1, 6 do
       local h = tonumber(shape:sub(k, k))
-      G.rect(k == lit and 15 or 7, 51 + (k - 1) * 2, 6 - h, 2, 1)
+      G.rect(k == lit and 15 or 7, ax + 15 + (k - 1) * 2, 6 - h, 2, 1)
     end
   end
   if pv("carp") > 1 then
@@ -1155,8 +1241,16 @@ local function boxed_text(txt, size, a)
   screen.text(txt)
 end
 
+local function strum_text()
+  local v = pv("strum")
+  if v == 0 then return "STRUM OFF" end
+  return string.format("STRUM %+dms", v)
+end
+
 local function draw_overlays()
-  if bank_flash > 0 then
+  if (k2_held and k3_held) or strum_flash > 0 then
+    boxed_text(strum_text(), 8, (k2_held and k3_held) and 1 or math.min(1, strum_flash / PULSE))
+  elseif bank_flash > 0 then
     boxed_text(cur_bank().name, 16, math.min(1, bank_flash / PULSE))
   elseif carp_flash > 0 then
     boxed_text("CHIP ARP " .. carp_names[pv("carp")], 8, math.min(1, carp_flash / PULSE))
@@ -1222,6 +1316,7 @@ local function tick(dt)
   carp_flash = math.max(0, carp_flash - 1)
   chord_flash = math.max(0, chord_flash - 1)
   hold_flash = math.max(0, hold_flash - 1)
+  strum_flash = math.max(0, strum_flash - 1)
   flash = math.max(0, flash - dt * 3)
 end
 

@@ -90,6 +90,7 @@ nuevo `ChordexCHIP`, y cargá **chordexchip** desde SELECT.
 | K2 + E1 | gate del arpegio (máximo = legato) |
 | K2 + E2 | patrón del arpegio |
 | K2 + E3 | velocidad del arpegio |
+| K2 + K3 + E3 | strum: + de grave a agudo, − de agudo a grave (ms entre voces) |
 | K1 mantenido | retener on/off (puntito arriba) |
 
 **Faders:** ataque, decay, duty, PWM, sweep, vibrato, ruido, fatness,

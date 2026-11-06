@@ -89,6 +89,7 @@ compiled, and load **chordexchip** from SELECT.
 | K2 + E1 | arpeggio gate (max = legato) |
 | K2 + E2 | arpeggio pattern |
 | K2 + E3 | arpeggio speed |
+| K2 + K3 + E3 | strum: + low to high, − high to low (ms between voices) |
 | K1 held | hold on/off (small dot at the top) |
 
 **Faders:** attack, decay, duty, PWM, sweep, vibrato, noise, fatness,
