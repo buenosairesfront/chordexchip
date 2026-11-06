@@ -28,6 +28,7 @@ Engine_ChordexCHIP : CroneEngine {
   var duty = 0.25, pwm = 0, noise = 0, sweep = 0, swt = 0.12, vib = 0.2, fat = 0;
   var tab = 0, btab = 1, quant = 1, fm = 0, mtab = 20, ratio = 1;
   var carp = 0, bass = 0.7, strumVel = 0.8;
+  var bigChord = false;   // 5 notas o más: sin ruido, para que no se sume
 
   alloc {
     var tables, mkChip, mkFm, d32 = "0123456789ABCDEFGHIJKLMNOPQRSTUV";
@@ -282,7 +283,8 @@ Engine_ChordexCHIP : CroneEngine {
       var args = this.voiceArgs ++ [
         \f1, msg[1], \nf, 1, \vel, strumVel, \pan, msg[4],
         \amp, 0.2 * this.ampFix * ((4 / nv.max(4)) ** 0.5)
-      ];
+      ] ++ (if (nv >= 5) { [\noise, 0] } { [] });
+      if (nv >= 5) { bigChord = true };
       if (g.notNil) {
         if (msg[2] <= 0) { Synth.new(this.def(\voice), args, g) } {
           SystemClock.sched(msg[2], {
@@ -359,7 +361,11 @@ Engine_ChordexCHIP : CroneEngine {
     this.addCommand("sus", "f", { |msg| sus = msg[1]; this.setLive([\sus, sus]) });
     this.addCommand("duty", "f", { |msg| duty = msg[1]; this.setLive([\duty, duty]) });
     this.addCommand("pwm", "f", { |msg| pwm = msg[1]; this.setLive([\pwm, pwm]) });
-    this.addCommand("noise", "f", { |msg| noise = msg[1]; this.setLive([\noise, noise]) });
+    this.addCommand("noise", "f", { |msg|
+      noise = msg[1];
+      if (bigChord.not and: { noteGroup.notNil }) { noteGroup.set(\noise, noise) };
+      if (legatoSynth.notNil) { legatoSynth.set(\noise, noise) };
+    });
     this.addCommand("sweep", "f", { |msg| sweep = msg[1] });
     this.addCommand("swt", "f", { |msg| swt = msg[1] });
     this.addCommand("vib", "f", { |msg| vib = msg[1]; this.setLive([\vib, vib]) });
@@ -385,6 +391,7 @@ Engine_ChordexCHIP : CroneEngine {
       releasingGroup = noteGroup;
     };
     noteGroup = Group.head(context.xg);
+    bigChord = false;
   }
 
   def { |kind| ^((if (fm == 1) { "fm_" } { "chip_" }) ++ kind).asSymbol }
