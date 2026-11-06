@@ -89,7 +89,7 @@ compiled, and load **chordexchip** from SELECT.
 | K2 + E1 | arpeggio gate (max = legato) |
 | K2 + E2 | arpeggio pattern |
 | K2 + E3 | arpeggio speed |
-| K2 + K3 | opens the STRUM panel (stays open; closes 3 s after the last turn or with K2 + K3 again): E3 = notes, +1…+12 up from the chord, −1…−12 down; E2 = time between notes (ms, or note divisions when MIDI clock comes in) |
+| K2 + K3 | opens the STRUM panel (stays open; closes 3 s after the last turn or with K2 + K3 again): E3 = time between the chord notes in beat divisions (MIDI clock if present, otherwise the norns tempo); + plays from the first note to the last, − from the last to the first |
 | K1 held | hold on/off (small dot at the top) |
 
 **Faders:** attack, decay, duty, PWM, sweep, vibrato, noise, fatness,

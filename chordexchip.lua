@@ -70,6 +70,10 @@ local carp_names = {"off", "12Hz", "15Hz", "20Hz", "25Hz", "30Hz", "50Hz", "60Hz
 local carp_hz = {0, 12, 15, 20, 25, 30, 50, 60}
 local strum_div_names = {"1/64", "1/32", "1/16T", "1/16", "1/8T", "1/8", "1/4"}
 local strum_div_beats = {1 / 16, 1 / 8, 1 / 6, 1 / 4, 1 / 3, 1 / 2, 1}
+local function strum_text(v)
+  if v == 0 then return "OFF" end
+  return (v > 0 and "+" or "-") .. strum_div_names[math.abs(v)]
+end
 
 -- ============================================================
 -- tablas de onda (las mismas cadenas que el engine; tools/tablas.py)
@@ -261,7 +265,7 @@ local carp_flash = 0
 local hold_flash = 0
 local strum_ui = false    -- panel de strum abierto (K2+K3)
 local strum_t = 0         -- último movimiento en el panel
-local STRUM_CLOSE = 3     -- segundos sin tocar E2/E3 para cerrarlo
+local STRUM_CLOSE = 3     -- segundos sin tocar E3 para cerrarlo
 local strum_gen = 0
 local last_t = nil
 
@@ -363,29 +367,13 @@ local strum_step
 -- strum: n notas del acorde repetido hacia arriba por octavas;
 -- positivo = de grave a agudo, negativo = de agudo a grave
 local function strum_notes(t, n)
-  -- positivo: desde la nota más grave del acorde hacia arriba, por octavas
-  -- (hasta C7); negativo: desde la más aguda hacia abajo (hasta C1).
-  -- Sin repetir notas; si faltan, vuelve a empezar.
-  local pool = {}
+  -- solo las notas del acorde: + de la primera a la última, - al revés
+  local out = {}
   if n > 0 then
-    local last = -1
-    for oct = 0, 8 do
-      for _, m in ipairs(t) do
-        m = m + 12 * oct
-        if m > last and (m <= 96 or #pool == 0) then pool[#pool + 1] = m; last = m end
-      end
-    end
+    for i = 1, #t do out[i] = t[i] end
   else
-    local last = 999
-    for oct = 0, 8 do
-      for i = #t, 1, -1 do
-        local m = t[i] - 12 * oct
-        if m < last and (m >= 24 or #pool == 0) then pool[#pool + 1] = m; last = m end
-      end
-    end
+    for i = #t, 1, -1 do out[#out + 1] = t[i] end
   end
-  local out, k = {}, #pool
-  for i = 1, math.abs(n) do out[i] = pool[(i - 1) % k + 1] end
   return out
 end
 
@@ -397,7 +385,7 @@ local function sound_strum(note, t)
   engine.strumOn(note_to_hz(note - 24), current_vel)
   for i, m in ipairs(sn) do
     local pan = n > 1 and ((i - 1) / (n - 1) * 2 - 1) * 0.7 or 0
-    if pv("strum") < 0 then pan = -pan end
+    if pv("strum") < 0 then pan = -pan end   -- cada nota queda en su lugar del panorama
     engine.strumNote(note_to_hz(m), (i - 1) * step, n, pan)
   end
   VS.chord = {t0 = util.time(), note = sn[1], vel = current_vel}
@@ -409,7 +397,7 @@ local function sound_strum(note, t)
   clock.run(function()
     for i, m in ipairs(sn) do
       if strum_gen ~= g or current_note == nil then return end
-      local col = (i - 1) % 4 + 1
+      local col = pv("strum") > 0 and i or (n - i + 1)   -- cada nota en su columna
       TR.live[col] = true
       tr_note(col, m)
       if i < n then clock.sleep(step) end
@@ -493,14 +481,11 @@ local function beat_seconds()
   return clock.get_beat_sec()
 end
 
+-- múltiplos del pulso: del reloj MIDI si entra, si no del tempo de la norns
 strum_step = function()
-  if ext_clock_on() and tick_sec then return tick_sec * 24 * strum_div_beats[pv("strum_div")] end
-  return pv("strum_ms") / 1000
-end
-
-local function strum_time_text()
-  if ext_clock_on() and tick_sec then return strum_div_names[pv("strum_div")] end
-  return pv("strum_ms") .. "ms"
+  local v = math.abs(pv("strum"))
+  if v == 0 then return 0 end
+  return beat_seconds() * strum_div_beats[v]
 end
 
 local function arp_note_dur(step_sec)
@@ -792,9 +777,10 @@ local function add_params()
   params:add_control("arp_gate", "gate arp (1=legato)", controlspec.new(0, 1, "lin", 0, 0.6, ""))
   params:add_option("carp", "arpegio de chip", carp_names, 1)
   params:set_action("carp", function(v) engine.carp(carp_hz[v]) end)
-  params:add_number("strum", "strum notas (+ sube, - baja)", -12, 12, 0)
-  params:add_number("strum_ms", "strum tiempo (ms)", 5, 300, 40)
-  params:add_option("strum_div", "strum tiempo con reloj MIDI", strum_div_names, 2)
+  -- strum: división del pulso entre nota y nota; + de la primera nota a la
+  -- última, - de la última a la primera, 0 = apagado
+  params:add_number("strum", "strum (división, +/- = sentido)", -#strum_div_names, #strum_div_names, 0,
+    function(p) return strum_text(p:get()) end)
 
   params:add_separator("chordex_chip_voz", "VOZ")
   params:add_control("atk", "ataque", controlspec.new(0.001, 2, "lin", 0, 0.005, "s"))
@@ -898,20 +884,12 @@ end
 function enc(n, d)
   if splash_start then return end
   local dir = d > 0 and 1 or -1
-  -- panel de strum abierto: E3 = notas (±12), E2 = tiempo
-  if strum_ui and (n == 2 or n == 3) then
+  -- panel de strum abierto: E3 = división del pulso (+ / - = sentido)
+  if strum_ui and n == 3 then
     strum_t = util.time()
     if k2_held then k2_turned = true end
     if k3_held then k3_turned = true end
-    if n == 3 then
-      params:set("strum", util.clamp(pv("strum") + dir, -12, 12))
-    elseif ext_clock_on() and tick_sec then
-      params:set("strum_div", util.clamp(pv("strum_div") + dir, 1, #strum_div_names))
-    else
-      local v = pv("strum_ms")
-      local st = v < 30 and 1 or (v < 100 and 5 or 10)
-      params:set("strum_ms", util.clamp(v + dir * st, 5, 300))
-    end
+    params:set("strum", util.clamp(pv("strum") + dir, -#strum_div_names, #strum_div_names))
     return
   end
   if n == 1 then
@@ -1264,10 +1242,10 @@ local function boxed_text(txt, size, a)
   screen.text(txt)
 end
 
--- panel de strum: notas (E3) y tiempo (E2) + una escalera con las notas;
--- el punto que brilla recorre la escalera al tiempo del strum
+-- panel de strum: E3 elige la división (con signo = sentido); la escalera
+-- muestra las notas del acorde en el orden en que suenan
 local function draw_strum_panel()
-  local x0, y0, w, h = 22, 17, 84, 30
+  local x0, y0, w, h = 26, 18, 76, 28
   screen.level(0)
   screen.rect(x0, y0, w, h)
   screen.fill()
@@ -1277,29 +1255,21 @@ local function draw_strum_panel()
   screen.move(x0 + 4, y0 + 9)
   screen.text("STRUM")
   local v = pv("strum")
-  screen.move(x0 + 4, y0 + 18)
   screen.level(v == 0 and 6 or 15)
-  screen.text(v == 0 and "OFF" or string.format("%+d", v))
+  screen.move(x0 + 4, y0 + 21)
+  screen.text(strum_text(v))
   screen.level(6)
-  screen.move(x0 + 4, y0 + 27)
-  screen.text("E2")
-  screen.level(12)
-  screen.move(x0 + 16, y0 + 27)
-  screen.text(strum_time_text())
-  screen.level(6)
-  screen.move(x0 + 24, y0 + 18)
+  screen.move(x0 + 4 + screen.text_extents(strum_text(v)) + 5, y0 + 21)
   screen.text("E3")
-  -- escalera
-  local n = math.abs(v)
-  if n > 0 then
-    local sx = x0 + w - 4 - (n - 1) * 3 - 2
+  if v ~= 0 then
+    local n = 4
+    local sx = x0 + w - 4 - (n - 1) * 4 - 2
     local step = math.max(0.03, strum_step())
     local lit = math.floor(util.time() / step) % (n + 3) + 1
     for i = 1, n do
-      local hgt = n > 1 and math.floor((i - 1) * 16 / (n - 1) + 0.5) or 8
-      if v < 0 then hgt = 16 - hgt end
-      local idx = i
-      G.rect(idx == lit and 15 or 8, sx + (i - 1) * 3, y0 + 23 - hgt, 2, 2)
+      local hgt = math.floor((i - 1) * 14 / (n - 1) + 0.5)
+      if v < 0 then hgt = 14 - hgt end
+      G.rect(i == lit and 15 or 8, sx + (i - 1) * 4, y0 + 22 - hgt, 3, 2)
     end
   end
   G.flush()
