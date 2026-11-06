@@ -1,7 +1,7 @@
 -- Chordex CHIP
 -- hermano chiptune de Chordex80 / ChordexFM / ChordexWT: mismo instrumento
 -- de acordes (una tecla = un acorde de 4 tonos + bajo, suena la nota más
--- grave apretada, arpegio, retener, crackle con más de 2 teclas) con un
+-- grave apretada, arpegio, retener) con un
 -- motor de chips de consola: 8 bancos x 8 presets.
 --
 -- La pantalla es un TRACKER:
@@ -598,10 +598,11 @@ local function stop_arp()
   arp_legato_off()
 end
 
-local crackle_amt = 0
+local crackle_amt = -1
+-- el crackle de disco viejo que subía con la cantidad de teclas quedó
+-- apagado: con muchas notas armaba un siseo fuerte
 local function update_crackle()
-  crackle_amt = util.clamp((#held_stack - 2) * 0.35, 0, 1)
-  engine.crackle(crackle_amt)
+  if crackle_amt ~= 0 then crackle_amt = 0; engine.crackle(0) end
 end
 
 -- con clock MIDI, algunos equipos repiten la nota apretada a tempo: el

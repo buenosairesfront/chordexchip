@@ -40,7 +40,6 @@ inspirados en chips de sonido clásicos, con 8 presets cada uno, 64 sonidos.
 - **arpegiador**: up, down, up-down, up x2, down x2, random y *arpa*; con el
   gate al máximo, legato real
 - **modo acorde** on/off (off = una sola nota) y **retener**
-- crackle de disco viejo con más de dos teclas apretadas
 - sigue el clock MIDI entrante para el tempo del arpegio y del eco
 - todo se guarda solo
 

@@ -42,7 +42,6 @@ soit 64 sons.
 - **arpégiateur** : up, down, up-down, up x2, down x2, random et *arpa*
   (harpe) ; gate au maximum = vrai legato
 - **mode accord** on/off (off = notes seules) et **hold**
-- craquement de vieux disque au-delà de deux touches tenues
 - suit l'horloge MIDI entrante pour le tempo de l'arpège et de l'écho
 - tous les réglages sont sauvegardés automatiquement
 

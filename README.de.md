@@ -42,7 +42,6 @@ klassischen Soundchips, mit je 8 Presets – 64 Klänge.
 - **Arpeggiator**: up, down, up-down, up x2, down x2, random und *arpa*
   (Harfe); Gate am Maximum = echtes Legato
 - **Akkordmodus** an/aus (aus = Einzelnoten) und **Hold**
-- Knistern einer alten Platte bei mehr als zwei gehaltenen Tasten
 - folgt eingehender MIDI-Clock für das Tempo von Arpeggio und Echo
 - alle Einstellungen werden automatisch gespeichert
 
