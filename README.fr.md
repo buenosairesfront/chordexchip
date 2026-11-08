@@ -99,9 +99,19 @@ moteur `ChordexCHIP`, puis chargez **chordexchip** depuis SELECT.
 cutoff, résonance, bits, fréquence d'échantillonnage. Dans la banque OPL, le
 duty règle la quantité de FM.
 
-**Menu PARAMETERS :** canal MIDI (0 = tous, par défaut), diviseur d'horloge
+**Menu PARAMETERS :** canal MIDI (1 par défaut ; 0 = tous), diviseur d'horloge
 MIDI, sustain, durée du sweep, octave, niveau de basse, écho, hall, volume et
 tout ce qui précède.
+
+## arc et crow
+
+Les deux sont optionnels : sans arc ni crow connecté, rien ne change.
+
+**arc** (4 anneaux, dessinés comme des potentiomètres) : 1 coupure · 2 résonance · 3 vitesse de l'arpège · 4 réverbération
+
+**crow** : IN1 = hauteur (V/oct, 0 V = C4), IN2 = gate (joue et relâche) · OUT1 = fondamentale de l'accord (V/oct) · OUT2 = enveloppe (0–8 V, avec l'attaque et le relâchement du son) · OUT3 = LFO synchronisé au tempo (1 mesure) · OUT4 = une impulsion à chaque accord ou pas d'arpège. Désactivable dans PARAMETERS > ARC / CROW.
+
+**Tempo :** au premier lancement, le tempo interne est de 50 BPM. L'horloge MIDI entrante (sur n'importe quel port MIDI) fixe le tempo dès qu'elle est présente.
 
 ## Galerie
 

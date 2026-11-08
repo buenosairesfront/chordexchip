@@ -96,9 +96,19 @@ compiled, and load **chordexchip** from SELECT.
 cutoff, resonance, bits, sample rate. In the OPL bank, duty sets the amount
 of FM.
 
-**PARAMETERS menu:** MIDI channel (0 = all, the default), MIDI clock divider,
+**PARAMETERS menu:** MIDI channel (1 by default; 0 = all), MIDI clock divider,
 sustain, sweep time, octave, bass level, echo, hall, volume, and everything
 above.
+
+## arc and crow
+
+Both are optional: with no arc or crow connected nothing changes.
+
+**arc** (4 rings, drawn as knobs): 1 cutoff · 2 resonance · 3 arpeggio speed · 4 hall
+
+**crow**: IN1 = pitch (V/oct, 0 V = C4), IN2 = gate (plays and releases) · OUT1 = chord root (V/oct) · OUT2 = envelope (0–8 V, with the attack and release of the sound) · OUT3 = tempo-synced LFO (1 bar) · OUT4 = a pulse on every chord or arpeggio step. It can be turned off in PARAMETERS > ARC / CROW.
+
+**Tempo:** on first launch the internal tempo is 50 BPM. Incoming MIDI clock (on any MIDI port) sets the tempo whenever it is present.
 
 ## Gallery
 

@@ -97,9 +97,19 @@ nuevo `ChordexCHIP`, y cargá **chordexchip** desde SELECT.
 cutoff, resonancia, bits, sample rate. En el banco OPL, el duty marca cuánta
 FM hay.
 
-**Menú PARAMETERS:** canal MIDI (0 = todos, por defecto), divisor del reloj
+**Menú PARAMETERS:** canal MIDI (1 por defecto; 0 = todos), divisor del reloj
 MIDI, sustain, tiempo del sweep, octava, nivel del bajo, eco, hall, volumen y
 todo lo anterior.
+
+## arc y crow
+
+Los dos son opcionales: sin arc ni crow conectados no cambia nada.
+
+**arc** (4 anillos, dibujados como perillas): 1 cutoff · 2 resonancia · 3 velocidad del arpegio · 4 hall
+
+**crow**: IN1 = altura (V/oct, 0 V = C4), IN2 = gate (toca y suelta) · OUT1 = tónica del acorde (V/oct) · OUT2 = envolvente (0–8 V, con el ataque y el release del sonido) · OUT3 = LFO a tempo (1 compás) · OUT4 = un pulso en cada acorde o paso del arpegio. Se puede apagar en PARAMETERS > ARC / CROW.
+
+**Tempo:** la primera vez arranca con el tempo interno en 50 BPM. Si entra reloj MIDI (por cualquier puerto MIDI), manda él.
 
 ## Galería
 
