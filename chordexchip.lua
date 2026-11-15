@@ -65,7 +65,7 @@ local chord_intervals = {
   m7b5 = {0, 3, 6, 10}, sus2 = {0, 2, 7}, sus4 = {0, 5, 7},
 }
 local note_names = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
-local arp_pattern_names = {"up", "down", "up-down", "up x2", "down x2", "random", "arpa"}
+local arp_pattern_names = {"up", "down", "up-down", "up x2", "down x2", "random", "harp"}
 local arp_rate_mult = {4, 2, 1, 0.5}
 local arp_rate_names = {"x1/4", "x1/2", "x1", "x2"}
 local carp_names = {"off", "12Hz", "15Hz", "20Hz", "25Hz", "30Hz", "50Hz", "60Hz"}
@@ -780,9 +780,9 @@ end
 
 local function add_params()
   params:add_separator("chordex_chip", "CHORDEX CHIP")
-  params:add_number("midi_channel", "canal MIDI (0=todos)", 0, 16, 1)
-  params:add_option("midi_clock_div", "divisor reloj MIDI", {"1x", "2x", "4x", "8x"}, 3)
-  params:add_option("bank", "banco", bank_names, 1)
+  params:add_number("midi_channel", "MIDI channel (0=all)", 0, 16, 1)
+  params:add_option("midi_clock_div", "MIDI clock divider", {"1x", "2x", "4x", "8x"}, 3)
+  params:add_option("bank", "bank", bank_names, 1)
   params:set_action("bank", function()
     if not loading then
       if pv("preset") ~= 1 then params:set("preset", 1) else load_preset() end
@@ -792,26 +792,26 @@ local function add_params()
   params:set_action("preset", function()
     if loading then send_wave() else load_preset() end
   end)
-  params:add_option("chord", "acorde", chord_types, 1)
+  params:add_option("chord", "chord", chord_types, 1)
   params:set_action("chord", function()
     if current_note and not arp_on then sound_chord(current_note) end
   end)
-  params:add_option("chord_on", "modo acorde", {"no", "sí"}, 2)
+  params:add_option("chord_on", "chord mode", {"no", "yes"}, 2)
   params:set_action("chord_on", function()
     if current_note and not arp_on and not loading then sound_chord(current_note) end
   end)
-  params:add_option("arp_pattern", "patrón arp", arp_pattern_names, 1)
-  params:add_option("arp_rate", "velocidad arp", arp_rate_names, 3)
-  params:add_control("arp_gate", "gate arp (1=legato)", controlspec.new(0, 1, "lin", 0, 0.6, ""))
-  params:add_option("carp", "arpegio de chip", carp_names, 1)
+  params:add_option("arp_pattern", "arp pattern", arp_pattern_names, 1)
+  params:add_option("arp_rate", "arp rate", arp_rate_names, 3)
+  params:add_control("arp_gate", "arp gate (1=legato)", controlspec.new(0, 1, "lin", 0, 0.6, ""))
+  params:add_option("carp", "chip arp", carp_names, 1)
   params:set_action("carp", function(v) engine.carp(carp_hz[v]) end)
   -- strum: división del pulso entre nota y nota; + de la primera nota a la
   -- última, - de la última a la primera, 0 = apagado
-  params:add_number("strum", "strum (división, +/- = sentido)", -#strum_div_names, #strum_div_names, 0,
+  params:add_number("strum", "strum (division, +/- = direction)", -#strum_div_names, #strum_div_names, 0,
     function(p) return strum_text(p:get()) end)
 
-  params:add_separator("chordex_chip_voz", "VOZ")
-  params:add_control("atk", "ataque", controlspec.new(0.001, 2, "lin", 0, 0.005, "s"))
+  params:add_separator("chordex_chip_voz", "VOICE")
+  params:add_control("atk", "attack", controlspec.new(0.001, 2, "lin", 0, 0.005, "s"))
   params:set_action("atk", function(v) engine.atk(v) end)
   params:add_control("rel", "decay", controlspec.new(0.02, 4, "lin", 0, 0.4, "s"))
   params:set_action("rel", function(v) engine.rel(v) end)
@@ -823,32 +823,32 @@ local function add_params()
   params:set_action("pwm", function(v) engine.pwm(v) end)
   params:add_control("sweep", "pitch sweep", controlspec.new(-1, 1, "lin", 0, 0, ""))
   params:set_action("sweep", function(v) engine.sweep(v) end)
-  params:add_control("swt", "tiempo sweep", controlspec.new(0.01, 1.5, "lin", 0, 0.12, "s"))
+  params:add_control("swt", "sweep time", controlspec.new(0.01, 1.5, "lin", 0, 0.12, "s"))
   params:set_action("swt", function(v) engine.swt(v) end)
   params:add_control("vib", "vibrato", controlspec.new(0, 1, "lin", 0, 0.15, ""))
   params:set_action("vib", function(v) engine.vib(v) end)
-  params:add_control("noise", "ruido", controlspec.new(0, 1, "lin", 0, 0, ""))
+  params:add_control("noise", "noise", controlspec.new(0, 1, "lin", 0, 0, ""))
   params:set_action("noise", function(v) engine.noise(v) end)
   params:add_control("fat", "fatness", controlspec.new(0, 1, "lin", 0, 0, ""))
   params:set_action("fat", function(v) engine.fat(v) end)
-  params:add_number("oct", "octava", -2, 2, 0)
-  params:add_control("bass", "bajo", controlspec.new(0, 1, "lin", 0, 0.7, ""))
+  params:add_number("oct", "octave", -2, 2, 0)
+  params:add_control("bass", "bass", controlspec.new(0, 1, "lin", 0, 0.7, ""))
   params:set_action("bass", function(v) engine.bass(v) end)
 
   params:add_separator("chordex_chip_fx", "FX")
   params:add_control("cutoff", "cutoff", controlspec.new(0, 1, "lin", 0, 1, ""))
   params:set_action("cutoff", function(v) engine.cutoff(v) end)
-  params:add_control("reso", "resonancia", controlspec.new(0, 1, "lin", 0, 0, ""))
+  params:add_control("reso", "resonance", controlspec.new(0, 1, "lin", 0, 0, ""))
   params:set_action("reso", function(v) engine.reso(v) end)
   params:add_number("bits", "bits", 2, 16, 16)
   params:set_action("bits", function(v) engine.bits(v) end)
   params:add_control("srate", "sample rate", controlspec.new(0, 1, "lin", 0, 1, ""))
   params:set_action("srate", function(v) engine.srate(v) end)
-  params:add_control("eco", "eco", controlspec.new(0, 1, "lin", 0, 0, ""))
+  params:add_control("eco", "echo", controlspec.new(0, 1, "lin", 0, 0, ""))
   params:set_action("eco", function(v) engine.eco(v) end)
   params:add_control("space", "hall", controlspec.new(0, 0.6, "lin", 0, 0.12, ""))
   params:set_action("space", function(v) engine.space(v) end)
-  params:add_control("gain", "volumen", controlspec.new(0, 1.5, "lin", 0, 1.0, ""))
+  params:add_control("gain", "volume", controlspec.new(0, 1.5, "lin", 0, 1.0, ""))
   params:set_action("gain", function(v) engine.gain(v) end)
 end
 

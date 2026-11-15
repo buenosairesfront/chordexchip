@@ -158,7 +158,7 @@ end
 
 function X.add_params()
   params:add_separator("chordex_ext", "ARC / CROW")
-  params:add_option("crow_on", "crow (entradas y salidas)", {"no", "sí"}, 2)
+  params:add_option("crow_on", "crow (inputs & outputs)", {"no", "yes"}, 2)
   params:set_action("crow_on", function(v)
     if v == 2 then setup_crow() end
   end)
