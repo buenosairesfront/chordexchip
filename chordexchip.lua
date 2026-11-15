@@ -248,6 +248,7 @@ local P = {
   {id = "srate",  lb = "RATE", min = 0,     max = 1,    step = 0.02},
 }
 local focus_index = 3
+local fader_flash = 0   -- nombre del parámetro (E2 / E3)
 
 local arp_on = false
 local arp_clock_id = nil
@@ -956,6 +957,8 @@ function enc(n, d)
       if current_note and not arp_on then sound_chord(current_note) end
     else
       focus_index = ((focus_index - 1 + dir) % #P) + 1
+      fader_flash = PULSE * 1.5
+      chord_flash = 0; bank_flash = 0; carp_flash = 0
       bump(P[focus_index].id)
     end
   elseif n == 3 then
@@ -969,6 +972,8 @@ function enc(n, d)
       chord_flash = PULSE * 2
     else
       nudge(P[focus_index], d)
+      fader_flash = PULSE * 1.5
+      chord_flash = 0; bank_flash = 0; carp_flash = 0
       bump(P[focus_index].id)
     end
   end
@@ -1315,6 +1320,32 @@ local function draw_strum_panel()
   G.flush()
 end
 
+
+-- cartel con el nombre del parámetro que se mueve (E2 elige, E3 ajusta):
+-- fondo negro debajo para que la animación no se vea a través
+local function param_label(p)
+  local nm = p.name or params:lookup_param(p.id).name or p.id
+  nm = nm:upper()
+  for a, b in pairs({["á"] = "A", ["é"] = "E", ["í"] = "I", ["ó"] = "O", ["ú"] = "U", ["ñ"] = "N"}) do
+    nm = nm:gsub(a, b)
+  end
+  return nm
+end
+
+local function draw_param_flash()
+  local txt = param_label(P[focus_index])
+  local cx, cy = 64, 32
+  screen.font_face(1)
+  screen.font_size(8)
+  local w = screen.text_extents(txt)
+  screen.level(0)
+  screen.rect(math.floor(cx - w / 2) - 3, cy - 6, w + 6, 11)
+  screen.fill()
+  screen.level(15)   -- sin fundido: los grises bajos ensucian el OLED
+  screen.move(math.floor(cx - w / 2), cy + 2)
+  screen.text(txt)
+end
+
 local function draw_overlays()
   if strum_ui then
     draw_strum_panel()
@@ -1330,6 +1361,8 @@ local function draw_overlays()
     -- modo acorde apagado: solo la nota (o "1" si todavía no se tocó nada)
     if params:get("chord_on") == 1 then txt = root and note_names[(root % 12) + 1] or "1" end
     boxed_text(txt, 8, k3_held and 1 or math.min(1, chord_flash / PULSE))
+  elseif fader_flash > 0 then
+    draw_param_flash()
   end
 end
 
@@ -1384,6 +1417,7 @@ local function tick(dt)
   carp_flash = math.max(0, carp_flash - 1)
   chord_flash = math.max(0, chord_flash - 1)
   hold_flash = math.max(0, hold_flash - 1)
+  fader_flash = math.max(0, fader_flash - 1)
   if strum_ui and util.time() - strum_t > STRUM_CLOSE then strum_ui = false end
   flash = math.max(0, flash - dt * 3)
 end
