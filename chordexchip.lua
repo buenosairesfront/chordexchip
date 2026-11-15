@@ -1334,7 +1334,7 @@ end
 
 local function draw_param_flash()
   local txt = param_label(P[focus_index])
-  local cx, cy = 64, 32
+  local cx, cy = 64, 58   -- abajo, al borde de la pantalla
   screen.font_face(1)
   screen.font_size(8)
   local w = screen.text_extents(txt)
